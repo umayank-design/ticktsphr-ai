@@ -65,7 +65,7 @@ function buildKeywords(description: string): string[] {
     description
       .toLowerCase()
       .replace(/[^a-z0-9 ]/g, " ")
-      .split(/\\s+/)
+      .split(/\s+/)
       .map((word) => word.trim())
       .filter((word) => word.length > 1 && !stopWords.has(word))
   )].slice(0, 6);
