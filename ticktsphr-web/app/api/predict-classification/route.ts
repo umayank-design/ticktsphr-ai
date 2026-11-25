@@ -118,7 +118,7 @@ export async function POST(req: Request) {
 
     // Never trust a user ID supplied by the browser.
     const prediction = await predictClassification(
-      user.id,
+      supabase,
       description,
       membership.organization_id
     );
