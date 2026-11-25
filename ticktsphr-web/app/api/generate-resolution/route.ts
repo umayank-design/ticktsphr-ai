@@ -1,59 +1,107 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+type ResolutionRequest = {
+  description?: unknown;
+  category?: unknown;
+  rca?: unknown;
+};
+
+const FALLBACK_RESOLUTION = `1. Review the ticket description and confirm the affected user/application.
+2. Validate user access, configuration, and recent changes.
+3. Check application logs and the reported error.
+4. Route the ticket to the support team matching its category.
+5. Share the findings, resolution status, and next steps with the requester.`;
+
+function cleanText(value: unknown, maxLength: number): string {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { description, category, rca } = body;
+    let body: ResolutionRequest;
 
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY not found");
+    try {
+      body = (await req.json()) as ResolutionRequest;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON request body" }, { status: 400 });
     }
 
-    console.log(
-      "Gemini Key Loaded:",
-      process.env.GEMINI_API_KEY.substring(0, 10)
-    );
+    const description = cleanText(body.description, 8000);
+    const category = cleanText(body.category, 200);
+    const rca = cleanText(body.rca, 2000);
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    if (!description) {
+      return NextResponse.json({ error: "Ticket description is required" }, { status: 400 });
+    }
 
-const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-8b",
-});
-    const prompt = `
-You are an expert ITSM and Oracle Fusion support analyst.
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ error: "Authentication service is not configured" }, { status: 500 });
+    }
+
+    const cookieStore = await cookies();
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+          } catch {
+            // Cookie writes may be unavailable in a read-only rendering context.
+          }
+        },
+      },
+    });
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { resolution: FALLBACK_RESOLUTION, source: "fallback" },
+        { status: 200 }
+      );
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" });
+    const prompt = `You are an expert ITSM and Oracle Fusion support analyst.
 
 Ticket Description:
 ${description}
 
 AI Category:
-${category}
+${category || "Not classified"}
 
 Probable RCA:
-${rca}
+${rca || "Not available"}
 
-Return only clear numbered resolution steps.
-`;
+Return only clear numbered resolution steps. Do not claim actions were performed.`;
 
     const result = await model.generateContent(prompt);
-    const resolution = result.response.text();
+    const resolution = result.response.text().trim();
+
+    if (!resolution) {
+      return NextResponse.json(
+        { resolution: FALLBACK_RESOLUTION, source: "fallback" },
+        { status: 200 }
+      );
+    }
 
     return NextResponse.json({ resolution, source: "gemini" });
-  } catch (error: any) {
-    console.error("Gemini resolution error:", error);
-
-    return NextResponse.json({
-      resolution: `
-1. Review the ticket description and confirm the affected user/application.
-2. Validate user access, configuration, and recent changes.
-3. Check application logs and error messages.
-4. Assign the ticket to the correct support team based on category.
-5. Update the requester with resolution status and next steps.
-
-Probable fallback resolution generated because Gemini API failed.
-`,
-      source: "mock-fallback",
-      error: error.message || "Failed to generate resolution",
-    });
+  } catch {
+    console.error("Resolution generation failed");
+    return NextResponse.json(
+      { resolution: FALLBACK_RESOLUTION, source: "fallback" },
+      { status: 200 }
+    );
   }
 }
