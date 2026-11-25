@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Event = {
@@ -19,11 +19,7 @@ export default function TicketTimeline({
 }) {
   const [events, setEvents] = useState<Event[]>([]);
 
-  useEffect(() => {
-    loadEvents();
-  }, [ticketId]);
-
-  async function loadEvents() {
+  const loadEvents = useCallback(async () => {
     const { data, error } = await supabase
       .from("ticket_events")
       .select("*")
@@ -31,12 +27,16 @@ export default function TicketTimeline({
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Timeline fetch error:", error.message);
+      console.error("Timeline fetch failed");
       return;
     }
 
     setEvents(data || []);
-  }
+  }, [ticketId]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
 
   return (
     <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 mt-6">
