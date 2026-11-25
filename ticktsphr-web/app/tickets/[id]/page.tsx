@@ -63,11 +63,7 @@ export default function TicketDetails() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          description: ticket.description,
-          category: ticket.ai_category || ticket.category,
-          rca: ticket.ai_root_cause || ticket.rca,
-        }),
+        body: JSON.stringify({ ticketId: ticket.id }),
       });
 
       const data = await response.json();
