@@ -6,11 +6,6 @@ import { supabase } from "@/lib/supabase";
 
 
 
-type SlaRule = {
-  response_hours: number;
-  resolution_hours: number;
-};
-
 type PredictionResult = {
   module: string;
   group: string;
@@ -52,25 +47,6 @@ export default function RaiseTicketPage() {
     void loadOrganization();
     return () => { cancelled = true; };
   }, []);
-
-  function addHours(date: Date, hours: number) {
-    const result = new Date(date);
-    result.setHours(result.getHours() + hours);
-    return result;
-  }
-
-  function getSlaStatus(resolutionDueAt: string) {
-    const now = new Date();
-    const due = new Date(resolutionDueAt);
-
-    if (now > due) return "Breached";
-
-    const hoursLeft = (due.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-    if (hoursLeft <= 2) return "At Risk";
-
-    return "On Track";
-  }
 
   async function handlePredictClassification() {
     if (!organizationId) {
