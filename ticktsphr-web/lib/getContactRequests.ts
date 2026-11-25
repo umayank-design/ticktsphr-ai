@@ -13,7 +13,7 @@ export async function getContactRequests(organizationId?: string) {
   const { data, error } = await query;
 
   if (error) {
-    console.error("Contact requests fetch error:", error.message);
+    console.error("Contact request query failed");
     return [];
   }
 
