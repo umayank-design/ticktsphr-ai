@@ -85,9 +85,9 @@ export default function RaiseTicketPage() {
       if (data.priority && data.priority !== "Unclassified") {
         setPriority(data.priority);
       }
-    } catch (error: any) {
-      console.error("Prediction Error:", error.message);
-      setMessage(`Prediction Error: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unexpected prediction error";
+      setMessage(`Prediction Error: ${errorMessage}`);
     } finally {
       setPredicting(false);
     }
