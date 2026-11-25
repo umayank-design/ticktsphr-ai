@@ -1,19 +1,20 @@
 import { supabase } from "@/lib/supabase";
 
 export async function getCurrentOrganization(userId: string) {
-  console.log("Searching org for user:", userId);
+  if (!userId) return null;
 
   const { data, error } = await supabase
     .from("organization_members")
-    .select("*")
-    .eq("user_id", userId);
-
-  console.log("Organization query result:", data);
-  console.log("Organization query error:", error);
+    .select("organization_id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
+    // Keep user identifiers and membership data out of browser logs.
+    console.error("Unable to load current organization membership");
     return null;
   }
 
-  return data?.[0] || null;
+  return data ?? null;
 }
