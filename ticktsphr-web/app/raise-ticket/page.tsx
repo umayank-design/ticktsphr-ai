@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCurrentOrganization } from "@/lib/getCurrentOrganization";
 import { supabase } from "@/lib/supabase";
 
-const ORGANIZATION_ID = "c5191970-2ce2-498f-8d2b-6193db93a575";
+
 
 type SlaRule = {
   response_hours: number;
@@ -22,6 +23,7 @@ type PredictionResult = {
 };
 
 export default function RaiseTicketPage() {
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [customer, setCustomer] = useState("");
   const [requesterName, setRequesterName] = useState("");
   const [description, setDescription] = useState("");
@@ -32,6 +34,24 @@ export default function RaiseTicketPage() {
   const [predicting, setPredicting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOrganization() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        if (!cancelled) setMessage("Please sign in before raising a ticket.");
+        return;
+      }
+      const membership = await getCurrentOrganization(user.id);
+      if (!cancelled) {
+        if (membership?.organization_id) setOrganizationId(membership.organization_id);
+        else setMessage("Your account is not linked to an organization. Contact your administrator.");
+      }
+    }
+    void loadOrganization();
+    return () => { cancelled = true; };
+  }, []);
 
   function addHours(date: Date, hours: number) {
     const result = new Date(date);
@@ -62,11 +82,6 @@ export default function RaiseTicketPage() {
     setMessage("");
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-
-      const userId =
-        userData?.user?.id || "manual-ticket-user";
-
       const response = await fetch("/api/predict-classification", {
         method: "POST",
         headers: {
@@ -74,8 +89,7 @@ export default function RaiseTicketPage() {
         },
         body: JSON.stringify({
           description,
-          userId,
-          organizationId: ORGANIZATION_ID,
+          organizationId,
         }),
       });
 
@@ -100,6 +114,11 @@ export default function RaiseTicketPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!organizationId) {
+      setMessage("Your account must belong to an organization before creating a ticket.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
@@ -109,7 +128,7 @@ export default function RaiseTicketPage() {
       const { data: slaRule, error: slaError } = await supabase.rpc(
         "get_sla_rule_for_ticket",
         {
-          org_id: ORGANIZATION_ID,
+          org_id: organizationId,
           ticket_priority: priority,
         }
       );
@@ -148,7 +167,7 @@ export default function RaiseTicketPage() {
         priority,
         site,
         status: "Open",
-        organization_id: ORGANIZATION_ID,
+        organization_id: organizationId,
         source_type: "Manual",
 
         category: prediction?.module || "Unclassified",
