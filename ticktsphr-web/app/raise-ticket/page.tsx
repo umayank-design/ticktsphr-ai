@@ -73,6 +73,11 @@ export default function RaiseTicketPage() {
   }
 
   async function handlePredictClassification() {
+    if (!organizationId) {
+      setMessage("Your account must belong to an organization before requesting AI classification.");
+      return;
+    }
+
     if (!description.trim()) {
       setMessage("Please enter ticket description first.");
       return;
