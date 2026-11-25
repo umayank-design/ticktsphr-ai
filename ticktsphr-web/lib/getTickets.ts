@@ -13,7 +13,7 @@ export async function getTickets(organizationId?: string) {
   const { data, error } = await query;
 
   if (error) {
-    console.error("Supabase fetch error:", error.message);
+    console.error("Ticket query failed");
     return [];
   }
 
