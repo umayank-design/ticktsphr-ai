@@ -121,87 +121,32 @@ export default function RaiseTicketPage() {
 
     setLoading(true);
     setMessage("");
-
     try {
-      const createdAt = new Date();
-
-      const { data: slaRule, error: slaError } = await supabase.rpc(
-        "get_sla_rule_for_ticket",
-        {
-          org_id: organizationId,
-          ticket_priority: priority,
-        }
-      );
-
-      if (slaError) {
-        console.error("SLA RPC Error:", slaError.message);
-        throw new Error("Unable to fetch SLA rule.");
-      }
-
-      const rule: SlaRule | undefined = Array.isArray(slaRule)
-        ? slaRule[0]
-        : slaRule;
-
-      if (!rule) {
-        throw new Error("No SLA rule found for selected priority.");
-      }
-
-      const responseDueAt = addHours(
-        createdAt,
-        Number(rule.response_hours)
-      ).toISOString();
-
-      const resolutionDueAt = addHours(
-        createdAt,
-        Number(rule.resolution_hours)
-      ).toISOString();
-
-      const slaStatus = getSlaStatus(resolutionDueAt);
-      const ticketNumber = `TKT-${Date.now()}`;
-
-      const { error: insertError } = await supabase.from("tickets").insert({
-        ticket_number: ticketNumber,
-        customer,
-        requester_name: requesterName,
-        description,
-        priority,
-        site,
-        status: "Open",
-        organization_id: organizationId,
-        source_type: "Manual",
-
-        category: prediction?.module || "Unclassified",
-        assignment_team: prediction?.suggestedTeam || "Pending AI Assignment",
-        rca: prediction?.probableRca || null,
-
-        ai_category: prediction?.module || "Unclassified",
-        ai_priority: prediction?.priority || priority,
-        ai_assignment_group: prediction?.group || "Unassigned",
-        ai_root_cause: prediction?.probableRca || null,
-        ai_suggested_resolution: prediction?.recommendedAction || null,
-        ai_confidence: prediction?.confidence || 0,
-
-        response_due_at: responseDueAt,
-        resolution_due_at: resolutionDueAt,
-        sla_status: slaStatus,
+      const response = await fetch("/api/create-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          customer,
+          requesterName,
+          description,
+          priority,
+          site,
+          prediction,
+        }),
       });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to create ticket.");
 
-      if (insertError) {
-        console.error("Ticket Insert Error:", insertError.message);
-        throw new Error(insertError.message);
-      }
-
-      setMessage(`Ticket Created Successfully. Ticket Number: ${ticketNumber}`);
-
+      setMessage(`Ticket Created Successfully. Ticket Number: ${result.ticketNumber}`);
       setCustomer("");
       setRequesterName("");
       setDescription("");
       setPriority("P2");
       setSite("");
       setPrediction(null);
-    } catch (error: any) {
-      console.error("Raise Ticket Error:", error.message);
-      setMessage(`Error: ${error.message}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to create ticket.");
     } finally {
       setLoading(false);
     }
