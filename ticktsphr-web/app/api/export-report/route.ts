@@ -85,7 +85,10 @@ export async function GET(request: Request) {
 
     const lines = [
       COLUMNS.map(csvCell).join(","),
-      ...(tickets ?? []).map((ticket) => COLUMNS.map((column) => csvCell(ticket[column])).join(",")),
+      ...(tickets ?? []).map((ticket) => {
+        const row = ticket as unknown as Record<string, unknown>;
+        return COLUMNS.map((column) => csvCell(row[column])).join(",");
+      }),
     ];
     return new Response("\uFEFF" + lines.join("\r\n"), {
       status: 200,
