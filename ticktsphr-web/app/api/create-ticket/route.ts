@@ -96,13 +96,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No SLA policy is configured for this priority" }, { status: 422 });
     }
 
+    const responseHours = Number(slaRule.response_hours);
+    const resolutionHours = Number(slaRule.resolution_hours);
+    if (!Number.isFinite(responseHours) || !Number.isFinite(resolutionHours) || responseHours <= 0 || resolutionHours <= 0 || responseHours > 8760 || resolutionHours > 8760) {
+      console.error("Ticket creation received an invalid SLA rule");
+      return NextResponse.json({ error: "The configured SLA policy is invalid" }, { status: 500 });
+    }
+
     const createdAt = new Date();
-    const responseDueAt = new Date(createdAt.getTime() + Number(slaRule.response_hours) * 3600000).toISOString();
-    const resolutionDueAt = new Date(createdAt.getTime() + Number(slaRule.resolution_hours) * 3600000).toISOString();
+    const responseDueAt = new Date(createdAt.getTime() + responseHours * 3600000).toISOString();
+    const resolutionDueAt = new Date(createdAt.getTime() + resolutionHours * 3600000).toISOString();
     const hoursLeft = (new Date(resolutionDueAt).getTime() - createdAt.getTime()) / 3600000;
     const slaStatus = hoursLeft <= 2 ? "At Risk" : "On Track";
     const prediction = body.prediction ?? {};
-    const ticketNumber = `TKT-${createdAt.getTime()}`;
+    const ticketNumber = `TKT-${createdAt.getTime()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
     const { error: insertError } = await supabase.from("tickets").insert({
       ticket_number: ticketNumber,
