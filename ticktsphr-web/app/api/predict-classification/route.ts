@@ -32,9 +32,9 @@ export async function POST(req: Request) {
         ? body.organizationId.trim()
         : "";
 
-    if (!description) {
+    if (!description || description.length > 8000) {
       return NextResponse.json(
-        { error: "Ticket description is required" },
+        { error: "Ticket description must be between 1 and 8000 characters" },
         { status: 400 }
       );
     }
