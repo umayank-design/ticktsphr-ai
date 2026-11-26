@@ -1,14 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCurrentOrganization } from "@/lib/getCurrentOrganization";
 import { supabase } from "@/lib/supabase";
 
-const ORGANIZATION_ID = "c5191970-2ce2-498f-8d2b-6193db93a575";
 
-type SlaRule = {
-  response_hours: number;
-  resolution_hours: number;
-};
 
 type PredictionResult = {
   module: string;
@@ -22,6 +18,7 @@ type PredictionResult = {
 };
 
 export default function RaiseTicketPage() {
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [customer, setCustomer] = useState("");
   const [requesterName, setRequesterName] = useState("");
   const [description, setDescription] = useState("");
@@ -33,26 +30,30 @@ export default function RaiseTicketPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  function addHours(date: Date, hours: number) {
-    const result = new Date(date);
-    result.setHours(result.getHours() + hours);
-    return result;
-  }
-
-  function getSlaStatus(resolutionDueAt: string) {
-    const now = new Date();
-    const due = new Date(resolutionDueAt);
-
-    if (now > due) return "Breached";
-
-    const hoursLeft = (due.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-    if (hoursLeft <= 2) return "At Risk";
-
-    return "On Track";
-  }
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOrganization() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        if (!cancelled) setMessage("Please sign in before raising a ticket.");
+        return;
+      }
+      const membership = await getCurrentOrganization(user.id);
+      if (!cancelled) {
+        if (membership?.organization_id) setOrganizationId(membership.organization_id);
+        else setMessage("Your account is not linked to an organization. Contact your administrator.");
+      }
+    }
+    void loadOrganization();
+    return () => { cancelled = true; };
+  }, []);
 
   async function handlePredictClassification() {
+    if (!organizationId) {
+      setMessage("Your account must belong to an organization before requesting AI classification.");
+      return;
+    }
+
     if (!description.trim()) {
       setMessage("Please enter ticket description first.");
       return;
@@ -62,11 +63,6 @@ export default function RaiseTicketPage() {
     setMessage("");
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-
-      const userId =
-        userData?.user?.id || "manual-ticket-user";
-
       const response = await fetch("/api/predict-classification", {
         method: "POST",
         headers: {
@@ -74,8 +70,7 @@ export default function RaiseTicketPage() {
         },
         body: JSON.stringify({
           description,
-          userId,
-          organizationId: ORGANIZATION_ID,
+          organizationId,
         }),
       });
 
@@ -90,9 +85,9 @@ export default function RaiseTicketPage() {
       if (data.priority && data.priority !== "Unclassified") {
         setPriority(data.priority);
       }
-    } catch (error: any) {
-      console.error("Prediction Error:", error.message);
-      setMessage(`Prediction Error: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unexpected prediction error";
+      setMessage(`Prediction Error: ${errorMessage}`);
     } finally {
       setPredicting(false);
     }
@@ -100,89 +95,39 @@ export default function RaiseTicketPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!organizationId) {
+      setMessage("Your account must belong to an organization before creating a ticket.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
-
     try {
-      const createdAt = new Date();
-
-      const { data: slaRule, error: slaError } = await supabase.rpc(
-        "get_sla_rule_for_ticket",
-        {
-          org_id: ORGANIZATION_ID,
-          ticket_priority: priority,
-        }
-      );
-
-      if (slaError) {
-        console.error("SLA RPC Error:", slaError.message);
-        throw new Error("Unable to fetch SLA rule.");
-      }
-
-      const rule: SlaRule | undefined = Array.isArray(slaRule)
-        ? slaRule[0]
-        : slaRule;
-
-      if (!rule) {
-        throw new Error("No SLA rule found for selected priority.");
-      }
-
-      const responseDueAt = addHours(
-        createdAt,
-        Number(rule.response_hours)
-      ).toISOString();
-
-      const resolutionDueAt = addHours(
-        createdAt,
-        Number(rule.resolution_hours)
-      ).toISOString();
-
-      const slaStatus = getSlaStatus(resolutionDueAt);
-      const ticketNumber = `TKT-${Date.now()}`;
-
-      const { error: insertError } = await supabase.from("tickets").insert({
-        ticket_number: ticketNumber,
-        customer,
-        requester_name: requesterName,
-        description,
-        priority,
-        site,
-        status: "Open",
-        organization_id: ORGANIZATION_ID,
-        source_type: "Manual",
-
-        category: prediction?.module || "Unclassified",
-        assignment_team: prediction?.suggestedTeam || "Pending AI Assignment",
-        rca: prediction?.probableRca || null,
-
-        ai_category: prediction?.module || "Unclassified",
-        ai_priority: prediction?.priority || priority,
-        ai_assignment_group: prediction?.group || "Unassigned",
-        ai_root_cause: prediction?.probableRca || null,
-        ai_suggested_resolution: prediction?.recommendedAction || null,
-        ai_confidence: prediction?.confidence || 0,
-
-        response_due_at: responseDueAt,
-        resolution_due_at: resolutionDueAt,
-        sla_status: slaStatus,
+      const response = await fetch("/api/create-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          customer,
+          requesterName,
+          description,
+          priority,
+          site,
+          prediction,
+        }),
       });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to create ticket.");
 
-      if (insertError) {
-        console.error("Ticket Insert Error:", insertError.message);
-        throw new Error(insertError.message);
-      }
-
-      setMessage(`Ticket Created Successfully. Ticket Number: ${ticketNumber}`);
-
+      setMessage(`Ticket Created Successfully. Ticket Number: ${result.ticketNumber}`);
       setCustomer("");
       setRequesterName("");
       setDescription("");
       setPriority("P2");
       setSite("");
       setPrediction(null);
-    } catch (error: any) {
-      console.error("Raise Ticket Error:", error.message);
-      setMessage(`Error: ${error.message}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to create ticket.");
     } finally {
       setLoading(false);
     }

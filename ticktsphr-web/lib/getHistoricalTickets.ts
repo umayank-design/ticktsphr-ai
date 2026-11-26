@@ -15,7 +15,7 @@ export async function getHistoricalTickets(userId: string) {
     .order("imported_at", { ascending: false });
 
   if (error) {
-    console.error("Historical tickets fetch error:", error.message);
+    console.error("Historical ticket query failed");
     return [];
   }
 

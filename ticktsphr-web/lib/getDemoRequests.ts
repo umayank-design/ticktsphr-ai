@@ -13,7 +13,7 @@ export async function getDemoRequests(organizationId?: string) {
   const { data, error } = await query;
 
   if (error) {
-    console.error("Demo requests fetch error:", error.message);
+    console.error("Demo request query failed");
     return [];
   }
 

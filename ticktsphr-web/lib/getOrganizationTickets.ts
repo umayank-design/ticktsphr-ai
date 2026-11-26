@@ -13,7 +13,7 @@ export async function getOrganizationTickets(userId: string) {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error(error.message);
+    console.error("Organization ticket query failed");
     return [];
   }
 

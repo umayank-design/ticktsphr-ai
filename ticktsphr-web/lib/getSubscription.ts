@@ -12,7 +12,7 @@ export async function getSubscription(organizationId: string) {
     return null;
   }
 
-  console.log("SUBSCRIPTION DATA:", data);
+  // Subscription records may contain billing and tenant metadata; never log them.
 
   return data && data.length > 0 ? data[0] : null;
 }
